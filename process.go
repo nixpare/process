@@ -1,3 +1,4 @@
+//go:generate go install github.com/alessio-pareto/kill@latest
 package process
 
 import (
