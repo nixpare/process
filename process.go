@@ -1,4 +1,4 @@
-//go:generate go install github.com/alessio-pareto/kill@latest
+//go:generate go get github.com/alessio-pareto/kill@latest && go build github.com/alessio-pareto/kill
 package process
 
 import (
@@ -161,7 +161,7 @@ func (p *Process) Stop() (err error) {
 		return ProcessNotStartedErr
 	}
 
-	cmd := exec.Command("kill.exe", fmt.Sprint(p.Cmd.Process.Pid))
+	cmd := exec.Command(killProcessName, fmt.Sprint(p.Cmd.Process.Pid))
 	cmd.Run()
 
 	if cmd.ProcessState.ExitCode() == -1 {

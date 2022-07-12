@@ -5,6 +5,8 @@ import (
 	"syscall"
 )
 
+const killProcessName = "./kill.exe"
+
 func NewProcess(name string, args ...string) *Process {
 	p := new(Process)
 
