@@ -1,11 +1,10 @@
 package process
 
 import (
+	"fmt"
 	"os/exec"
 	"syscall"
 )
-
-const killProcessName = "./kill.exe"
 
 func NewProcess(name string, args ...string) *Process {
 	p := new(Process)
@@ -18,4 +17,19 @@ func NewProcess(name string, args ...string) *Process {
 
 func (p *Process) HideWindow() {
 	p.Cmd.SysProcAttr.HideWindow = true
+}
+
+func (p *Process) Stop() (err error) {
+	if !p.started {
+		return ProcessNotStartedErr
+	}
+
+	cmd := exec.Command("./kill.exe", fmt.Sprint(p.Cmd.Process.Pid))
+	cmd.Run()
+
+	if cmd.ProcessState.ExitCode() == -1 {
+		return StopProcessErr
+	}
+
+	return
 }

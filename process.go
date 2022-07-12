@@ -1,4 +1,3 @@
-//go:generate go get github.com/alessio-pareto/kill@latest && go build github.com/alessio-pareto/kill
 package process
 
 import (
@@ -154,21 +153,6 @@ func (p *Process) release() {
 	if p.ErrPipe != nil {
 		p.ErrPipe.Close()
 	}
-}
-
-func (p *Process) Stop() (err error) {
-	if !p.started {
-		return ProcessNotStartedErr
-	}
-
-	cmd := exec.Command(killProcessName, fmt.Sprint(p.Cmd.Process.Pid))
-	cmd.Run()
-
-	if cmd.ProcessState.ExitCode() == -1 {
-		return StopProcessErr
-	}
-
-	return
 }
 
 func (p *Process) Kill() (err error) {
