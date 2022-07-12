@@ -6,6 +6,9 @@ import (
 	"syscall"
 )
 
+// Generates a CTRL+C signal: the calling process detatches
+// itself from its own terminal, attaches to the process target
+// one, then fires the CTRL+C event
 func StopProcess(p *os.Process) error {
 	err := FreeConsole()
 	if err != nil {
@@ -25,6 +28,7 @@ func StopProcess(p *os.Process) error {
 	return nil
 }
 
+// Loads the kernel32 dll that can be used to find all sort of windows APIs
 func LoadKernel32() (*syscall.DLL, error) {
 	d, e := syscall.LoadDLL("kernel32.dll")
 	if e != nil {
@@ -34,6 +38,8 @@ func LoadKernel32() (*syscall.DLL, error) {
 	return d, nil
 }
 
+// Generates a CTRL+C event that spreads to all the processes attached to
+// the current underlying console
 func GenerateConsoleCtrlEvent() error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -77,14 +83,18 @@ func SetConsoleCtrlHandler(flag bool) error {
 	return nil
 }
 
+// Makes the calling process not a target of the CTRL+C event
 func RemoveConsoleCtrlHandler() error {
 	return SetConsoleCtrlHandler(true)
 }
 
+// Reverts the effect of RemoveConsoleCtrlHandler function and makes
+// the calling process a target of the CTRL+C event
 func RestoreConsoleCtrlHandler() error {
 	return SetConsoleCtrlHandler(false)
 }
 
+// Detatches the calling process from the underlying console
 func FreeConsole() error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -104,6 +114,7 @@ func FreeConsole() error {
 	return nil
 }
 
+// Creates a new console for the calling process (it must not already have one)
 func AllocConsole() error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -123,6 +134,7 @@ func AllocConsole() error {
 	return nil
 }
 
+// Attaches to the same console as the process with the given PID (it must not already have one)
 func AttachConsole(pid int) error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -142,6 +154,9 @@ func AttachConsole(pid int) error {
 	return nil
 }
 
+// Makes che calling process immune to CTRL+C events and generates one of them.
+// You may call RestoreConsoleCtrlHandler to revert the change after all child
+// processes have exited
 func SendCtrlC() error {
 	if e := RemoveConsoleCtrlHandler(); e != nil {
 		return e
