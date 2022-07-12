@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 )
 
 type constError string
@@ -35,19 +34,6 @@ type Process struct {
 	startMutex sync.Mutex
 	waitMutex sync.Mutex
 	exitError error
-}
-
-func NewProcess(name string, args ...string) *Process {
-	p := new(Process)
-
-	p.Cmd = exec.Command(name, args...)
-	p.Cmd.SysProcAttr = &syscall.SysProcAttr{ CreationFlags: 16 }
-
-	return p
-}
-
-func (p *Process) HideWindow() {
-	p.Cmd.SysProcAttr.HideWindow = true
 }
 
 func (p *Process) PipeStdin(f io.Reader) {
