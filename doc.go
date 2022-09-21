@@ -25,7 +25,7 @@ but there are some differences:
 
 On windows, in order to make it work, you must have installed the
 kill.exe executable that you can find in my repository at
-https://github.com/alessio-pareto/kill: this executable must be
+https://github.com/nixpare/kill: this executable must be
 installed in the working folder with the name "kill.exe".
 The only one caviat is that the process is not spawned as a child, so
 if the calling program crashes the spawned process will remain active
