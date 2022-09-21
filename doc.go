@@ -1,4 +1,5 @@
-/*Package Process provides a method to spawn child processes,
+/*
+Package Process provides a method to spawn child processes,
 like os/exec package, but with one huge difference: on Windows
 you have the capabilty of sending an Interrupt signal, that is
 you can simulate a CTRL+C event to the child process, which
@@ -36,6 +37,5 @@ track of the spawned processes and kills them if the main process goes off
 
 Considering its natively supported to send signals between processes,
 there is full support without any external program
-
 */
 package process
