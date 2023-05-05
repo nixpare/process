@@ -1,198 +1,238 @@
 package process
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"sync"
+	"path/filepath"
+	"strings"
+
+	"github.com/nixpare/comms"
 )
 
-type constError string
-
-func (err constError) Error() string {
-    return string(err)
+type ExitStatus struct {
+	PID       int
+	ExitCode  int
+	ExitError error
 }
 
-const (
-	ProcessAlreadyStartedErr = constError("process already started")
-	ProcessNotStartedErr = constError("process not started")
-	StopProcessErr = constError("stop process failed")
-	ProcessNotRunningErr = constError("process not started")
-)
-
-// Process wraps the exec.Cmd structure and provides more control over the
-// Stdin, Stdout, Stderr and gracefull termination by sending a CTRL+C signal
-// even on Windows (see package documentation for more details)
+// Process wraps the default *exec.Cmd structure and makes easier the
+// access to redirect the standard output and check when it terminates.
+// Another limitation is that graceful shutdown is not implemented yet
+// due to Windows limitations, but will be. It's possible to wait for its
+// termination on multiple goroutines by waiting for exitC closure. Both
+// in and out can be nil
 type Process struct {
-	Cmd *exec.Cmd
-	InPipe  io.WriteCloser
-	OutPipe io.ReadCloser
-	ErrPipe io.ReadCloser
-	started bool
-	running bool
-	startMutex sync.Mutex
-	waitMutex sync.Mutex
-	exitError error
+	name             string
+	wd               string
+	execName         string
+	args             []string
+	exitComm         *comms.Broadcaster[ExitStatus]
+	Exec             *exec.Cmd
+	running          bool
+	lastExitStatus   ExitStatus
+	in               io.WriteCloser
+	out              io.ReadCloser
+	captureOut       *bytes.Buffer
+	err              io.ReadCloser
+	captureErr       *bytes.Buffer
 }
 
-// Pipes the Stdin to f. Even though you could use os.Stdin
-// as the pipe destination, this will not work, use RedirectStdin
-// method instead
-func (p *Process) PipeStdin(f io.Reader) {
-	p.Cmd.Stdin = f
-}
-
-// Pipes the Stdout to f. Even though you could use os.Stdout
-// as the pipe destination, this will not work, use RedirectStdout
-// method instead
-func (p *Process) PipeStdout(f io.Writer) {
-	p.Cmd.Stdout = f
-}
-
-// Pipes the Stderr to f. Even though you could use os.Stderr
-// as the pipe destination, this will not work, use RedirectStderr
-// method instead
-func (p *Process) PipeStderr(f io.Writer) {
-	p.Cmd.Stderr = f
-}
-
-// Redirects the os.Stdin to the child process. This must be called before
-// the process starts; consider that this function is non-blocking, so you don't
-// need to call it in a goroutine
-func (p *Process) RedirectStdin() (err error) {
-	p.InPipe, err = p.Cmd.StdinPipe()
+// NewProcess creates a new program with the diven parameters
+func NewProcess(name, wd string, execName string, args ...string) (*Process, error) {
+	wd, err := filepath.Abs(wd)
 	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
+		return nil, err
 	}
 
-	go io.Copy(p.InPipe, os.Stdin)
+	info, err := os.Stat(wd)
+	if err != nil {
+		return nil, fmt.Errorf("directory \"%s\" not found", wd)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("\"%s\" is not a directory", wd)
+	}
+
+	execName, err = filepath.Abs(execName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Process{
+		name:     name,
+		wd:       wd,
+		execName: execName,
+		args:     args,
+		exitComm: comms.NewBroadcaster[ExitStatus](),
+	}, nil
+}
+
+// Start starts the process and with a goroutine waits for its
+// termination. It returns an error if there is a problem with
+// the creation of the new process, but if something happens during
+// the execution it will be reported to che channel returned
+func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
+	if p.IsRunning() {
+		return fmt.Errorf("process \"%s\" is already running", p.name)
+	}
+
+	p.Exec = createCommandFromProcess(p)
+	err := p.preparePipesAndFiles(stdin, stdout, stderr)
+	if err != nil {
+		return fmt.Errorf("process \"%s\" pipe error: %w", p.name, err)
+	}
+
+	err = p.Exec.Start()
+	if err != nil {
+		return fmt.Errorf("process \"%s\" startup error: %w", p.name, err)
+	}
+
+	p.running = true
+	go p.afterStart()
+
 	return nil
 }
 
-// Redirects the process Stdout to os.Stdout. This must be called before
-// the process starts; consider that this function is non-blocking, so you don't
-// need to call it in a goroutine
-func (p *Process) RedirectStout() (err error) {
-	p.OutPipe, err = p.Cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("stdout pipe: %w", err)
-	}
-
-	go io.Copy(os.Stdout, p.OutPipe)
-	return nil
-}
-
-// Redirects the process Stderr to os.Stderr. This must be called before
-// the process starts; consider that this function is non-blocking, so you don't
-// need to call it in a goroutine
-func (p *Process) RedirectSterr() (err error) {
-	p.ErrPipe, err = p.Cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("stderr pipe: %w", err)
-	}
-
-	go io.Copy(os.Stderr, p.ErrPipe)
-	return nil
-}
-
-// Redirects all Stdin, Stdout, Stderr from the child process to the calling process.
-// This function is non-blocking, so you don't need to call it in a goroutine
-func (p *Process) RedirectAll() (err error) {
-	err = p.RedirectStdin()
+func (p *Process) preparePipesAndFiles(stdin io.Reader, stdout, stderr io.Writer) (err error) {
+	// STDIN
+	p.in, err = p.Exec.StdinPipe()
 	if err != nil {
 		return
 	}
-	err = p.RedirectStout()
+	if stdin != nil {
+		go io.Copy(p.in, stdin)
+	}
+
+	// STDOUT
+	p.out, err = p.Exec.StdoutPipe()
 	if err != nil {
 		return
 	}
-	err = p.RedirectSterr()
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-// Starts the process like exec.Cmd.Start method
-func (p *Process) Start() (err error) {
-	if p.started {
-		return ProcessAlreadyStartedErr
-	}
-
-	p.startMutex.Lock()
-	p.started = true
-	err = p.Cmd.Start()
-
-	if err != nil {
-		p.startMutex.Unlock()
-		return err
-	}
-
+	p.captureOut = bytes.NewBuffer(nil)
 	go func() {
-		p.running = true
-		p.startMutex.Unlock()
-		
-		p.waitMutex.Lock()
-		p.exitError = p.Cmd.Wait()
-		p.waitMutex.Unlock()
-
-		p.release()
+		sc := bufio.NewScanner(p.out)
+		sc.Split(bufio.ScanBytes)
+		for sc.Scan() {
+			b := sc.Bytes()
+			p.captureOut.Write(b)
+			if stdout != nil {
+				stdout.Write(b)
+			}
+		}
 	}()
 
+	// STDERR
+	p.err, err = p.Exec.StderrPipe()
+	if err != nil {
+		return
+	}
+	p.captureErr = bytes.NewBuffer(nil)
+	go func() {
+		sc := bufio.NewScanner(p.err)
+		sc.Split(bufio.ScanBytes)
+		for sc.Scan() {
+			b := sc.Bytes()
+			p.captureErr.Write(b)
+			if stderr != nil {
+				stderr.Write(b)
+			}
+		}
+	}()
+	
 	return
 }
 
-// Waits the process to exit, either after a Stop call (graceful)
-// or after it's killed
-func (p *Process) Wait() (err error) {
-	if !p.started {
-		return ProcessNotStartedErr
+// afterStart waits for the process with the already provided function by *os.Process,
+// then closes the exitC channel to segnal its termination
+func (p *Process) afterStart() {
+	err := p.Exec.Wait()
+	p.lastExitStatus = ExitStatus{
+		PID: p.Exec.Process.Pid,
+		ExitCode: p.Exec.ProcessState.ExitCode(),
+		ExitError: err,
 	}
 
-	p.startMutex.Lock()
-	if !p.running {
-		p.startMutex.Unlock()
-		return ProcessNotRunningErr
-	}
-	p.startMutex.Unlock()
-
-	p.waitMutex.Lock()
-	err = p.exitError
-	p.waitMutex.Unlock()
-
-	return
-}
-
-func (p *Process) release() {
+	p.exitComm.Send(p.lastExitStatus)
 	p.running = false
-
-	if p.InPipe != nil {
-		p.InPipe.Close()
-	}
-	if p.OutPipe != nil {
-		p.OutPipe.Close()
-	}
-	if p.ErrPipe != nil {
-		p.ErrPipe.Close()
-	}
 }
 
-// Kills the process
-func (p *Process) Kill() (err error) {
-	if !p.started {
-		return ProcessNotStartedErr
+// wait waits for the process termination (if running) and returns the last process
+// state known
+func (p *Process) Wait() ExitStatus {
+	if p.IsRunning() {
+		return p.exitComm.Get()
 	}
-
-	if !p.running {
-		return ProcessNotRunningErr
-	}
-
-	return p.Cmd.Process.Kill()
+	return p.lastExitStatus
 }
 
-// Tells whether the process is running
+func (p *Process) Stop() error {
+	return p.stop()
+}
+
+// Kill forcibly kills the process and waits for the cleanup
+func (p *Process) Kill() error {
+	if !p.IsRunning() {
+		return fmt.Errorf("program \"%s\" is already stopped", p.name)
+	}
+
+	err := p.Exec.Process.Kill()
+	if err != nil {
+		return fmt.Errorf("program \"%s\" kill error: %w", p.name, err)
+	}
+
+	return nil
+}
+
+func (p *Process) SendInput(data []byte) error {
+	if !p.IsRunning() {
+		return fmt.Errorf("program \"%s\" is not running", p.name)
+	}
+
+	_, err := p.in.Write(data)
+	return err
+}
+
+func (p *Process) SendText(text string) error {
+	return p.SendInput(append([]byte(text), '\n'))
+}
+
+func (p *Process) CloseInput() error {
+	return p.in.Close()
+}
+
+func (p *Process) StdOut() []byte {
+	return p.captureOut.Bytes()
+}
+
+func (p *Process) LastOutputLines(n int) string {
+	if n <= 0 {
+		return ""
+	}
+
+	output := string(p.StdOut())
+	outputSplit := strings.Split(output, "\n")
+	
+	return strings.Join(outputSplit[len(outputSplit) - n:], "\n")
+}
+
+func (p *Process) StdErr() []byte {
+	return p.captureErr.Bytes()
+}
+
+// IsRunning reports whether the program is running
 func (p *Process) IsRunning() bool {
 	return p.running
+}
+
+func (p *Process) String() string {
+	var state string
+	if p.IsRunning() {
+		state = fmt.Sprintf("Running - %d", p.Exec.Process.Pid)
+	} else {
+		state = "Stopped"
+	}
+	return fmt.Sprintf("%s (%s)", p.name, state)
 }
