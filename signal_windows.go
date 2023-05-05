@@ -3,19 +3,56 @@ package process
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"syscall"
 )
+
+const ctrl_c_command = "--send-ctrlc-to-process"
+
+func init() {
+	if len(os.Args) < 3 || os.Args[1] != ctrl_c_command {
+		return
+	}
+
+	PID := -1
+	_, err := fmt.Sscanf(os.Args[2], "%d", &PID)
+	if err != nil || PID <= 0 {
+		return
+	}
+
+	err = stopProcessThread(PID)
+	if err != nil {
+		fmt.Print(err)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
+}
 
 // Generates a CTRL+C signal: the calling process detatches
 // itself from its own terminal, attaches to the process target
 // one, then fires the CTRL+C event
-func StopProcess(p *os.Process) error {
+func stopProcess(p *os.Process) error {
+	child := exec.Command(os.Args[0], ctrl_c_command, fmt.Sprint(p.Pid))
+	b, err := child.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("send CTRL-C: %s", string(b))
+	}
+	return nil
+}
+
+func stopProcessThread(PID int) error {
 	err := FreeConsole()
 	if err != nil {
 		return err
 	}
 
-	err = AttachConsole(p.Pid)
+	err = AttachConsole(PID)
+	if err != nil {
+		return err
+	}
+
+	err = RemoveConsoleCtrlHandler()
 	if err != nil {
 		return err
 	}
@@ -25,10 +62,15 @@ func StopProcess(p *os.Process) error {
 		return err
 	}
 
+	err = RestoreConsoleCtrlHandler()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// Loads the kernel32 dll that can be used to find all sort of windows APIs
+// LoadKernel32 loads the kernel32 dll that can be used to find all sort of windows APIs
 func LoadKernel32() (*syscall.DLL, error) {
 	d, e := syscall.LoadDLL("kernel32.dll")
 	if e != nil {
@@ -38,7 +80,7 @@ func LoadKernel32() (*syscall.DLL, error) {
 	return d, nil
 }
 
-// Generates a CTRL+C event that spreads to all the processes attached to
+// GenerateConsoleCtrlEvent generates a CTRL+C event that spreads to all the processes attached to
 // the current underlying console
 func GenerateConsoleCtrlEvent() error {
 	d, e := LoadKernel32()
@@ -59,7 +101,8 @@ func GenerateConsoleCtrlEvent() error {
 	return nil
 }
 
-func SetConsoleCtrlHandler(flag bool) error {
+
+func setConsoleCtrlHandler(flag bool) error {
 	d, e := LoadKernel32()
 	if e != nil {
 		return e
@@ -83,18 +126,18 @@ func SetConsoleCtrlHandler(flag bool) error {
 	return nil
 }
 
-// Makes the calling process not a target of the CTRL+C event
+// RemoveConsoleCtrlHandler makes the calling process not a target of the CTRL+C event
 func RemoveConsoleCtrlHandler() error {
-	return SetConsoleCtrlHandler(true)
+	return setConsoleCtrlHandler(true)
 }
 
-// Reverts the effect of RemoveConsoleCtrlHandler function and makes
+// RestoreConsoleCtrlHandler reverts the effect of RemoveConsoleCtrlHandler function and makes
 // the calling process a target of the CTRL+C event
 func RestoreConsoleCtrlHandler() error {
-	return SetConsoleCtrlHandler(false)
+	return setConsoleCtrlHandler(false)
 }
 
-// Detatches the calling process from the underlying console
+// FreeConsole detatches the calling process from the underlying console
 func FreeConsole() error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -114,7 +157,7 @@ func FreeConsole() error {
 	return nil
 }
 
-// Creates a new console for the calling process (it must not already have one)
+// AllocConsole creates a new console for the calling process (it must not already have one)
 func AllocConsole() error {
 	d, e := LoadKernel32()
 	if e != nil {
@@ -134,7 +177,7 @@ func AllocConsole() error {
 	return nil
 }
 
-// Attaches to the same console as the process with the given PID (it must not already have one)
+// AttachConsole attaches to the same console as the process with the given PID (it must not already have one)
 func AttachConsole(pid int) error {
 	d, e := LoadKernel32()
 	if e != nil {

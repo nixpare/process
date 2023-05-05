@@ -23,17 +23,10 @@ func (p *Process) ShowWindow() {
 // Generates a CTRL+C signal (os.Interrupt for managing it in the process) through the
 // kill.exe program in the working directory. See the package documentation for more details.
 // Stop does not wait the process to exit, use Wait() instead
-func (p *Process) stop() (err error) {
+func (p *Process) stop() error {
 	if !p.running {
 		return fmt.Errorf("process %s not started", p.name)
 	}
 
-	cmd := exec.Command("./kill.exe", fmt.Sprint(p.Exec.Process.Pid))
-	cmd.Run()
-
-	if cmd.ProcessState.ExitCode() == -1 {
-		return fmt.Errorf("error stopping process %s", p.name)
-	}
-
-	return
+	return StopProcess(p.Exec.Process.Pid)
 }
