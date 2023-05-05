@@ -1,48 +1,65 @@
 package process
 
 import (
-	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nixpare/comms"
 )
 
+// ExitStatus holds the status information of a Process
+// after it has exited
 type ExitStatus struct {
 	PID       int
 	ExitCode  int
 	ExitError error
 }
 
-// Process wraps the default *exec.Cmd structure and makes easier the
-// access to redirect the standard output and check when it terminates.
-// Another limitation is that graceful shutdown is not implemented yet
-// due to Windows limitations, but will be. It's possible to wait for its
-// termination on multiple goroutines by waiting for exitC closure. Both
-// in and out can be nil
-type Process struct {
-	name             string
-	wd               string
-	execName         string
-	args             []string
-	exitComm         *comms.Broadcaster[ExitStatus]
-	Exec             *exec.Cmd
-	running          bool
-	lastExitStatus   ExitStatus
-	in               io.WriteCloser
-	out              io.ReadCloser
-	captureOut       *bytes.Buffer
-	err              io.ReadCloser
-	captureErr       *bytes.Buffer
+var dev_null, _ = os.Open(os.DevNull)
+
+// DevNull returns the NULL file and can be used to suppress
+// input and output on processes. It can be used as a regular
+// os.File
+func DevNull() *os.File {
+	res := new(os.File)
+	*res = *dev_null
+	return res
 }
 
-// NewProcess creates a new program with the diven parameters
-func NewProcess(name, wd string, execName string, args ...string) (*Process, error) {
+// Process wraps the default *exec.Cmd structure and makes easier to
+// access and redirect the standard input, output and error. It also
+// allows to gracefully stop a process both in Windows and UNIX-like
+// OSes by generating a CTRL-C event without stopping the parent process.
+//
+// For more details, see the package documentation
+type Process struct {
+	execName       string
+	execPath       string
+	exitComm       *comms.Broadcaster[ExitStatus]
+	Exec           *exec.Cmd
+	running        bool
+	lastExitStatus ExitStatus
+	in             io.WriteCloser
+	captureOut     *bytes.Buffer
+	captureErr     *bytes.Buffer
+}
+
+// NewProcess creates a new Process with the given arguments.
+//
+// The Process, once started, will run on the given working
+// directory, but the executable path can be a relative path,
+// calculated from the parent working directory, not the child
+// one
+func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
+	execName := execPath
+
 	wd, err := filepath.Abs(wd)
 	if err != nil {
 		return nil, err
@@ -56,38 +73,41 @@ func NewProcess(name, wd string, execName string, args ...string) (*Process, err
 		return nil, fmt.Errorf("\"%s\" is not a directory", wd)
 	}
 
-	execName, err = filepath.Abs(execName)
+	execPath, err = filepath.Abs(execPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Process{
-		name:     name,
-		wd:       wd,
+	p := &Process{
 		execName: execName,
-		args:     args,
+		execPath: execPath,
 		exitComm: comms.NewBroadcaster[ExitStatus](),
-	}, nil
+		Exec:     createCommand(execPath, args...),
+		captureOut: bytes.NewBuffer(nil),
+		captureErr: bytes.NewBuffer(nil),
+	}
+	p.Exec.Dir = wd
+	
+	return p, nil
 }
 
-// Start starts the process and with a goroutine waits for its
-// termination. It returns an error if there is a problem with
-// the creation of the new process, but if something happens during
-// the execution it will be reported to che channel returned
+// Start starts the Process. It returns an error if there is a problem with
+// the creation of the new Process, but if something happens during
+// the execution it will be reported in the ExitStatus provided by calling
+// the Wait method
 func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 	if p.IsRunning() {
-		return fmt.Errorf("process \"%s\" is already running", p.name)
+		return fmt.Errorf("process \"%s\" is already running", p.execName)
 	}
 
-	p.Exec = createCommandFromProcess(p)
-	err := p.preparePipesAndFiles(stdin, stdout, stderr)
+	err := p.preparePipes(stdin, stdout, stderr)
 	if err != nil {
-		return fmt.Errorf("process \"%s\" pipe error: %w", p.name, err)
+		return fmt.Errorf("process \"%s\" pipe error: %w", p.execName, err)
 	}
 
 	err = p.Exec.Start()
 	if err != nil {
-		return fmt.Errorf("process \"%s\" startup error: %w", p.name, err)
+		return fmt.Errorf("process \"%s\" startup error: %w", p.execName, err)
 	}
 
 	p.running = true
@@ -96,70 +116,39 @@ func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func (p *Process) preparePipesAndFiles(stdin io.Reader, stdout, stderr io.Writer) (err error) {
-	// STDIN
-	p.in, err = p.Exec.StdinPipe()
+func (p *Process) preparePipes(stdin io.Reader, stdout, stderr io.Writer) error {
+	err := p.prepareStdin(stdin)
 	if err != nil {
-		return
-	}
-	if stdin != nil {
-		go io.Copy(p.in, stdin)
+		return err
 	}
 
-	// STDOUT
-	p.out, err = p.Exec.StdoutPipe()
+	err = p.prepareStdout(stdout)
 	if err != nil {
-		return
+		return err
 	}
-	p.captureOut = bytes.NewBuffer(nil)
-	go func() {
-		sc := bufio.NewScanner(p.out)
-		sc.Split(bufio.ScanBytes)
-		for sc.Scan() {
-			b := sc.Bytes()
-			p.captureOut.Write(b)
-			if stdout != nil {
-				stdout.Write(b)
-			}
-		}
-	}()
 
-	// STDERR
-	p.err, err = p.Exec.StderrPipe()
-	if err != nil {
-		return
-	}
-	p.captureErr = bytes.NewBuffer(nil)
-	go func() {
-		sc := bufio.NewScanner(p.err)
-		sc.Split(bufio.ScanBytes)
-		for sc.Scan() {
-			b := sc.Bytes()
-			p.captureErr.Write(b)
-			if stderr != nil {
-				stderr.Write(b)
-			}
-		}
-	}()
-	
-	return
+	return p.prepareStderr(stderr)
 }
 
-// afterStart waits for the process with the already provided function by *os.Process,
-// then closes the exitC channel to segnal its termination
+// afterStart waits for the Process with the already provided function by *os.Process,
+// then sends the ExitStatus via the broadcaster
 func (p *Process) afterStart() {
 	err := p.Exec.Wait()
+
 	p.lastExitStatus = ExitStatus{
 		PID: p.Exec.Process.Pid,
 		ExitCode: p.Exec.ProcessState.ExitCode(),
 		ExitError: err,
 	}
 
+	// Some cleanup
+	p.in = nil
+
 	p.exitComm.Send(p.lastExitStatus)
 	p.running = false
 }
 
-// wait waits for the process termination (if running) and returns the last process
+// Wait waits for the Process termination (if running) and returns the last Process
 // state known
 func (p *Process) Wait() ExitStatus {
 	if p.IsRunning() {
@@ -168,61 +157,107 @@ func (p *Process) Wait() ExitStatus {
 	return p.lastExitStatus
 }
 
+// Stop sends a CTRL-C event to the Process to allow a graceful exit
 func (p *Process) Stop() error {
 	return p.stop()
 }
 
-// Kill forcibly kills the process and waits for the cleanup
+// Kill forcibly kills the Process
 func (p *Process) Kill() error {
 	if !p.IsRunning() {
-		return fmt.Errorf("program \"%s\" is already stopped", p.name)
+		return fmt.Errorf("program \"%s\" is already stopped", p.execName)
 	}
 
 	err := p.Exec.Process.Kill()
 	if err != nil {
-		return fmt.Errorf("program \"%s\" kill error: %w", p.name, err)
+		return fmt.Errorf("program \"%s\" kill error: %w", p.execName, err)
 	}
 
 	return nil
 }
 
+// SendInput sends data to the Process via a pipe, if the Process is
+// running and can pipe data. The Process might take any input until
+// a newline or an EOF: for the first one you can use the SendText method,
+// for the second case, you can close the pipe via the CloseInput method
+//
+// For more details, see the package documentation
 func (p *Process) SendInput(data []byte) error {
 	if !p.IsRunning() {
-		return fmt.Errorf("program \"%s\" is not running", p.name)
+		return fmt.Errorf("program \"%s\" is not running", p.execName)
+	}
+
+	if p.in == nil {
+		return errors.New("can't pipe input to the process, see package documentation for more details")
 	}
 
 	_, err := p.in.Write(data)
 	return err
 }
 
+// Sends a text with a newline appended automatically, to
+// simulate a real user behind a keyboard
 func (p *Process) SendText(text string) error {
 	return p.SendInput(append([]byte(text), '\n'))
 }
 
+// Closes the input pipe, simulating a CTRL-Z or an EOF
+// (if the stdin comes from a file)
 func (p *Process) CloseInput() error {
 	return p.in.Close()
 }
 
-func (p *Process) StdOut() []byte {
+// Stdout returns all the standard output captured at
+// the moment until the Process is started again
+func (p *Process) Stdout() []byte {
 	return p.captureOut.Bytes()
 }
 
+func stripWhiteSpaces(s string) string {
+	return strings.TrimRight(s, "\n\t ")
+}
+
+// LastOutputLines returns the last n lines in the
+// standard output captured, removing any trailing
+// white space (including newlines)
 func (p *Process) LastOutputLines(n int) string {
 	if n <= 0 {
 		return ""
 	}
 
-	output := string(p.StdOut())
-	outputSplit := strings.Split(output, "\n")
-	
+	output := string(p.Stdout())
+	if output == "" {
+		return ""
+	}
+
+	outputSplit := strings.Split(stripWhiteSpaces(output), "\n")
 	return strings.Join(outputSplit[len(outputSplit) - n:], "\n")
 }
 
-func (p *Process) StdErr() []byte {
+// CaptureOutputAfterInput sends the text to the process and captures,
+// for the provided time, the new output generated by the process
+func (p *Process) CaptureOutputAfterInput(text string, t time.Duration) (string, error) {
+	preOut := string(p.Stdout())
+	
+	err := p.SendText(text)
+	if err != nil {
+		return "", err
+	}
+
+	time.Sleep(t)
+	out := string(p.Stdout())
+
+	afterOut, _ := strings.CutPrefix(out, preOut)
+	return stripWhiteSpaces(afterOut), nil
+}
+
+// Stderr returns all the standard error captured at
+// the moment until the Process is started again
+func (p *Process) Stderr() []byte {
 	return p.captureErr.Bytes()
 }
 
-// IsRunning reports whether the program is running
+// IsRunning reports whether the Process is running
 func (p *Process) IsRunning() bool {
 	return p.running
 }
@@ -234,5 +269,5 @@ func (p *Process) String() string {
 	} else {
 		state = "Stopped"
 	}
-	return fmt.Sprintf("%s (%s)", p.name, state)
+	return fmt.Sprintf("%s (%s)", p.execName, state)
 }

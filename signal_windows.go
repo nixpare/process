@@ -1,6 +1,7 @@
 package process
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,9 +37,9 @@ func stopProcess(p *os.Process) error {
 	child := exec.Command(os.Args[0], ctrl_c_command, fmt.Sprint(p.Pid))
 	b, err := child.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("send CTRL-C: %s", string(b))
+		return fmt.Errorf("send CTRL-C error: %v: %s", err, string(b))
 	}
-	return nil
+	return errors.New(string(b))
 }
 
 func stopProcessThread(PID int) error {
