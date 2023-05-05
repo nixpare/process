@@ -3,7 +3,12 @@ package process
 
 import "os"
 
-// Sends a os.Interrupt signal to the process
-func stopProcess(p *os.Process) error {
+// StopProcess sends an os.Interrupt to the process
+func StopProcess(PID int) error {
+	p, err := os.FindProcess(PID)
+	if err != nil {
+		return err
+	}
+
 	return p.Signal(os.Interrupt)
 }

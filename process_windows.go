@@ -9,6 +9,12 @@ import (
 	"syscall"
 )
 
+// See https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+const (
+	create_new_console       = 0x00000010
+	create_new_process_group = 0x00000200
+)
+
 // createCommand creates a *cmd.Exec suitable for the
 // platform.
 //
@@ -17,7 +23,10 @@ import (
 // without interfearing with the parent process
 func createCommand(execPath string, args ...string) *exec.Cmd {
 	exec := exec.Command(execPath, args...)
-	exec.SysProcAttr = &syscall.SysProcAttr{ CreationFlags: 16, HideWindow: true }
+	exec.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: create_new_console | create_new_process_group,
+		HideWindow: true,
+	}
 	return exec
 }
 

@@ -22,17 +22,6 @@ type ExitStatus struct {
 	ExitError error
 }
 
-var dev_null, _ = os.Open(os.DevNull)
-
-// DevNull returns the NULL file and can be used to suppress
-// input and output on processes. It can be used as a regular
-// os.File
-func DevNull() *os.File {
-	res := new(os.File)
-	*res = *dev_null
-	return res
-}
-
 // Process wraps the default *exec.Cmd structure and makes easier to
 // access and redirect the standard input, output and error. It also
 // allows to gracefully stop a process both in Windows and UNIX-like
@@ -60,6 +49,15 @@ type Process struct {
 func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 	execName := execPath
 
+	if filepath.Base(execPath) == execPath {
+		lp, err := exec.LookPath(execPath)
+		if lp != "" {
+			execPath = lp
+		} else if err != nil {
+			return nil, err
+		}
+	}
+
 	wd, err := filepath.Abs(wd)
 	if err != nil {
 		return nil, err
@@ -71,11 +69,6 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 	}
 	if !info.IsDir() {
 		return nil, fmt.Errorf("\"%s\" is not a directory", wd)
-	}
-
-	execPath, err = filepath.Abs(execPath)
-	if err != nil {
-		return nil, err
 	}
 
 	p := &Process{
@@ -211,10 +204,6 @@ func (p *Process) CloseInput() error {
 // the moment until the Process is started again
 func (p *Process) Stdout() []byte {
 	return p.captureOut.Bytes()
-}
-
-func stripWhiteSpaces(s string) string {
-	return strings.TrimRight(s, "\n\t ")
 }
 
 // LastOutputLines returns the last n lines in the

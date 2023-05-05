@@ -1,7 +1,6 @@
 package process
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +17,13 @@ func init() {
 	PID := -1
 	_, err := fmt.Sscanf(os.Args[2], "%d", &PID)
 	if err != nil || PID <= 0 {
-		return
+		fmt.Print(err)
+		os.Exit(1)
+	}
+
+	if PID <= 0 {
+		fmt.Printf("invalid PID: %d", PID)
+		os.Exit(1)
 	}
 
 	err = stopProcessThread(PID)
@@ -30,16 +35,19 @@ func init() {
 	os.Exit(0)
 }
 
-// Generates a CTRL+C signal: the calling process detatches
-// itself from its own terminal, attaches to the process target
-// one, then fires the CTRL+C event
-func stopProcess(p *os.Process) error {
-	child := exec.Command(os.Args[0], ctrl_c_command, fmt.Sprint(p.Pid))
+// StopProcess simulates a CTRL+C signal to the Process
+func StopProcess(PID int) error {
+	child := exec.Command(os.Args[0], ctrl_c_command, fmt.Sprint(PID))
+	
 	b, err := child.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("send CTRL-C error: %v: %s", err, string(b))
+		return fmt.Errorf("CTRL-C thread error: %w", err)
 	}
-	return errors.New(string(b))
+	if len(b) > 0 {
+		return fmt.Errorf("CTRL-C thread error: %s", string(b))
+	}
+
+	return nil
 }
 
 func stopProcessThread(PID int) error {
@@ -58,12 +66,7 @@ func stopProcessThread(PID int) error {
 		return err
 	}
 
-	err = GenerateConsoleCtrlEvent()
-	if err != nil {
-		return err
-	}
-
-	err = RestoreConsoleCtrlHandler()
+	err = GenerateConsoleCtrlCEvent()
 	if err != nil {
 		return err
 	}
@@ -81,9 +84,9 @@ func LoadKernel32() (*syscall.DLL, error) {
 	return d, nil
 }
 
-// GenerateConsoleCtrlEvent generates a CTRL+C event that spreads to all the processes attached to
+// GenerateConsoleCtrlCEvent generates a CTRL+C event that spreads to all the processes attached to
 // the current underlying console
-func GenerateConsoleCtrlEvent() error {
+func GenerateConsoleCtrlCEvent() error {
 	d, e := LoadKernel32()
 	if e != nil {
 		return e
@@ -95,6 +98,27 @@ func GenerateConsoleCtrlEvent() error {
 	}
 
 	r, _, e := p.Call(syscall.CTRL_C_EVENT, 0)
+	if r == 0 {
+		return fmt.Errorf("generateConsoleCtrlEvent: %w", e)
+	}
+
+	return nil
+}
+
+// GenerateConsoleCtrlBreakEvent generates a CTRL+C event that spreads to all the processes attached to
+// the current underlying console
+func GenerateConsoleCtrlBreakEvent() error {
+	d, e := LoadKernel32()
+	if e != nil {
+		return e
+	}
+
+	p, e := d.FindProc("GenerateConsoleCtrlEvent")
+	if e != nil {
+		return fmt.Errorf("findProc: %w", e)
+	}
+
+	r, _, e := p.Call(syscall.CTRL_BREAK_EVENT, 0)
 	if r == 0 {
 		return fmt.Errorf("generateConsoleCtrlEvent: %w", e)
 	}
@@ -206,7 +230,7 @@ func SendCtrlC() error {
 		return e
 	}
 
-	if e := GenerateConsoleCtrlEvent(); e != nil {
+	if e := GenerateConsoleCtrlCEvent(); e != nil {
 		return e
 	}
 
