@@ -29,7 +29,7 @@ type ExitStatus struct {
 //
 // For more details, see the package documentation
 type Process struct {
-	execName       string
+	ExecName       string
 	execPath       string
 	exitComm       *comms.Broadcaster[ExitStatus]
 	Exec           *exec.Cmd
@@ -72,7 +72,7 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 	}
 
 	p := &Process{
-		execName: execName,
+		ExecName: execName,
 		execPath: execPath,
 		exitComm: comms.NewBroadcaster[ExitStatus](),
 		Exec:     createCommand(execPath, args...),
@@ -90,17 +90,17 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 // the Wait method
 func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 	if p.IsRunning() {
-		return fmt.Errorf("process \"%s\" is already running", p.execName)
+		return fmt.Errorf("process \"%s\" is already running", p.ExecName)
 	}
 
 	err := p.preparePipes(stdin, stdout, stderr)
 	if err != nil {
-		return fmt.Errorf("process \"%s\" pipe error: %w", p.execName, err)
+		return fmt.Errorf("process \"%s\" pipe error: %w", p.ExecName, err)
 	}
 
 	err = p.Exec.Start()
 	if err != nil {
-		return fmt.Errorf("process \"%s\" startup error: %w", p.execName, err)
+		return fmt.Errorf("process \"%s\" startup error: %w", p.ExecName, err)
 	}
 
 	p.running = true
@@ -158,12 +158,12 @@ func (p *Process) Stop() error {
 // Kill forcibly kills the Process
 func (p *Process) Kill() error {
 	if !p.IsRunning() {
-		return fmt.Errorf("program \"%s\" is already stopped", p.execName)
+		return fmt.Errorf("program \"%s\" is already stopped", p.ExecName)
 	}
 
 	err := p.Exec.Process.Kill()
 	if err != nil {
-		return fmt.Errorf("program \"%s\" kill error: %w", p.execName, err)
+		return fmt.Errorf("program \"%s\" kill error: %w", p.ExecName, err)
 	}
 
 	return nil
@@ -177,7 +177,7 @@ func (p *Process) Kill() error {
 // For more details, see the package documentation
 func (p *Process) SendInput(data []byte) error {
 	if !p.IsRunning() {
-		return fmt.Errorf("program \"%s\" is not running", p.execName)
+		return fmt.Errorf("program \"%s\" is not running", p.ExecName)
 	}
 
 	if p.in == nil {
@@ -258,5 +258,5 @@ func (p *Process) String() string {
 	} else {
 		state = "Stopped"
 	}
-	return fmt.Sprintf("%s (%s)", p.execName, state)
+	return fmt.Sprintf("%s (%s)", p.ExecName, state)
 }
