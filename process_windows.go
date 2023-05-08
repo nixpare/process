@@ -30,7 +30,7 @@ func createCommand(execPath string, args ...string) *exec.Cmd {
 // stop generates a CTRL+C signal
 func (p *Process) stop() error {
 	if !p.running {
-		return fmt.Errorf("process %s not started", p.execName)
+		return fmt.Errorf("process %s not started", p.ExecName)
 	}
 
 	return StopProcess(p.Exec.Process.Pid)
