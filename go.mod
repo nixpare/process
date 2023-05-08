@@ -1,4 +1,4 @@
-module github.com/nixpare/process
+module github.com/alessio-pareto/process
 
 go 1.18
 
