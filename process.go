@@ -14,14 +14,6 @@ import (
 	"github.com/nixpare/comms"
 )
 
-// ExitStatus holds the status information of a Process
-// after it has exited
-type ExitStatus struct {
-	PID       int
-	ExitCode  int
-	ExitError error
-}
-
 // Process wraps the default *exec.Cmd structure and makes easier to
 // access and redirect the standard input, output and error. It also
 // allows to gracefully stop a process both in Windows and UNIX-like
