@@ -23,8 +23,10 @@ import (
 type Process struct {
 	ExecName       string
 	execPath       string
-	exitComm       *comms.Broadcaster[ExitStatus]
+	args           []string
+	wd             string
 	Exec           *exec.Cmd
+	exitComm       *comms.Broadcaster[ExitStatus]
 	running        bool
 	lastExitStatus ExitStatus
 	in             io.WriteCloser
@@ -64,14 +66,15 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 	}
 
 	p := &Process{
-		ExecName: execName,
-		execPath: execPath,
-		exitComm: comms.NewBroadcaster[ExitStatus](),
-		Exec:     createCommand(execPath, args...),
+		ExecName:   execName,
+		execPath:   execPath,
+		args:       args,
+		wd:         wd,
+		exitComm:   comms.NewBroadcaster[ExitStatus](),
+		Exec:       createCommand(execPath, args...),
 		captureOut: bytes.NewBuffer(nil),
 		captureErr: bytes.NewBuffer(nil),
 	}
-	p.Exec.Dir = wd
 	
 	return p, nil
 }
@@ -84,6 +87,9 @@ func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 	if p.IsRunning() {
 		return fmt.Errorf("process \"%s\" is already running", p.ExecName)
 	}
+
+	p.Exec = createCommand(p.execPath, p.args...)
+	p.Exec.Dir = p.wd
 
 	err := p.preparePipes(stdin, stdout, stderr)
 	if err != nil {
@@ -128,6 +134,7 @@ func (p *Process) afterStart() {
 
 	// Some cleanup
 	p.in = nil
+	p.Exec = nil
 
 	p.exitComm.Send(p.lastExitStatus)
 	p.running = false
