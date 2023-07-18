@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-const ctrl_c_command = "--send-ctrlc-to-process"
+const ctrl_c_command = "--nix-send-ctrl"
 
 func init() {
 	if len(os.Args) < 3 || os.Args[1] != ctrl_c_command {
