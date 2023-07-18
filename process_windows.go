@@ -40,3 +40,11 @@ func (p *Process) stop() error {
 func (p *Process) ShowWindow() {
 	p.Exec.SysProcAttr.HideWindow = false
 }
+
+func (p *Process) InheritConsole(activate bool) {
+	if activate {
+		p.Exec.SysProcAttr.CreationFlags = 0
+	} else {
+		p.Exec.SysProcAttr.CreationFlags = create_new_console | create_new_process_group
+	}
+}

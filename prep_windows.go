@@ -1,41 +1,32 @@
 package process
 
 import (
-	"bufio"
 	"io"
 	"os"
 )
 
-func (p *Process) prepareStdin(stdin io.Reader) (err error) {
-	if stdin == nil {
-		p.Exec.Stdin = os.Stdin
-		return
+func (p *Process) prepareStdin(stdin io.Reader) error {
+	if stdin != nil {
+		if stdin == os.Stdin {
+			p.InheritConsole(true)
+		}
+		p.Exec.Stdin = stdin
+		return nil
 	}
 
+	var err error
 	p.in, err = p.Exec.StdinPipe()
-	if err != nil {
-		return
-	}
-
-	if stdin == dev_null {
-		p.Exec.Stdin = dev_null
-		return
-	}
-
-	go io.Copy(p.in, stdin)
-	return
+	return err
 }
 
 func (p *Process) prepareStdout(stdout io.Writer) error {
 	p.captureOut.Reset()
 
-	if stdout == nil {
-		p.Exec.Stdout = os.Stdout
-		return nil
-	}
-	
-	if stdout == dev_null {
-		p.Exec.Stdout = p.captureOut
+	if stdout != nil {
+		if stdout == os.Stdout {
+			p.InheritConsole(true)
+		}
+		p.Exec.Stdout = stdout
 		return nil
 	}
 	
@@ -44,29 +35,19 @@ func (p *Process) prepareStdout(stdout io.Writer) error {
 		return nil
 	}
 	go func() {
-		sc := bufio.NewScanner(outPipe)
-		sc.Split(bufio.ScanBytes)
-
-		for sc.Scan() {
-			b := sc.Bytes()
-
-			p.captureOut.Write(b)
-			stdout.Write(b)
-		}
+		io.Copy(p.captureOut, outPipe)
 	}()
 	return nil
 }
 
 func (p *Process) prepareStderr(stderr io.Writer) error {
-	p.captureErr.Reset()
-	
-	if stderr == nil {
-		p.Exec.Stderr = os.Stderr
-		return nil
-	}
+	p.captureOut.Reset()
 
-	if stderr == dev_null {
-		p.Exec.Stderr = p.captureErr
+	if stderr != nil {
+		if stderr == os.Stderr {
+			p.InheritConsole(true)
+		}
+		p.Exec.Stderr = stderr
 		return nil
 	}
 	
@@ -75,15 +56,7 @@ func (p *Process) prepareStderr(stderr io.Writer) error {
 		return nil
 	}
 	go func() {
-		sc := bufio.NewScanner(errPipe)
-		sc.Split(bufio.ScanBytes)
-
-		for sc.Scan() {
-			b := sc.Bytes()
-
-			p.captureErr.Write(b)
-			stderr.Write(b)
-		}
+		io.Copy(p.captureErr, errPipe)
 	}()
 	return nil
 }
