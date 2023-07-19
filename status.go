@@ -11,7 +11,11 @@ type ExitStatus struct {
 }
 
 func (exitStatus ExitStatus) Error() error {
-	if (exitStatus.ExitCode == 0 || exitStatus.ExitCode == interrupt_errno) && exitStatus.ExitError == nil {
+	if exitStatus.ExitCode == 0 || exitStatus.ExitCode == interrupt_errno {
+		return nil
+	}
+
+	if exitStatus.ExitError == nil {
 		return nil
 	}
 
