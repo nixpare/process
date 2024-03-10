@@ -1,2 +1,4 @@
 github.com/nixpare/comms v1.1.0 h1:FM125OBc4UG/p5Hx36G25ZBVG22gBioLc4imWByxxtM=
 github.com/nixpare/comms v1.1.0/go.mod h1:ZtGVUJ7o60At8pXHFxvpNZyDfD0DbShEV+AWnycwJek=
+github.com/nixpare/logger/v2 v2.2.2 h1:5jc8qBaqYQ8PXEYbyPKiXHToJEhR05fVU1DiMO8yN6E=
+github.com/nixpare/logger/v2 v2.2.2/go.mod h1:jkuUH1td14GkI55YuhaxDpdTijsBVxjT8u4678WWkEA=

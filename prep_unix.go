@@ -1,8 +1,8 @@
+//go:build !windows
 package process
 
 import (
 	"io"
-	"os"
 )
 
 func (p *Process) prepareStdin(stdin io.Reader) error {
@@ -10,10 +10,6 @@ func (p *Process) prepareStdin(stdin io.Reader) error {
 		var err error
 		p.in, err = p.Exec.StdinPipe()
 		return err
-	}
-
-	if stdin == os.Stdin && p.Exec.SysProcAttr.HideWindow {
-		inheritConsole(p.Exec.SysProcAttr, true)
 	}
 	
 	p.Exec.Stdin = stdin

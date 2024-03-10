@@ -2,7 +2,6 @@ package process
 
 import (
 	"fmt"
-	"os/exec"
 	"syscall"
 )
 
@@ -12,19 +11,11 @@ const (
 	create_new_process_group = 0x00000200
 )
 
-// createCommand creates a *cmd.Exec suitable for the
-// platform.
-//
-// By default, on windows, the process is created in a new console
-// (creation flag = 16) hidden, so the process can be easily stopped
-// without interfearing with the parent process
-func createCommand(execPath string, args ...string) *exec.Cmd {
-	exec := exec.Command(execPath, args...)
-	exec.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: create_new_console | create_new_process_group,
-		HideWindow: true,
-	}
-	return exec
+func initSysProcAttr() syscall.SysProcAttr {
+	var spa syscall.SysProcAttr
+	inheritConsole(&spa, false)
+	showWindow(&spa, false)
+	return spa
 }
 
 // stop generates a CTRL+C signal
@@ -36,15 +27,22 @@ func (p *Process) stop() error {
 	return StopProcess(p.Exec.Process.Pid)
 }
 
-// ShowWindow reverts the default behaviour and will let the window show up when the process starts
-func (p *Process) ShowWindow() {
-	p.Exec.SysProcAttr.HideWindow = false
+func showWindow(spa *syscall.SysProcAttr, flag bool) {
+	spa.HideWindow = !flag
 }
 
-func (p *Process) InheritConsole(activate bool) {
-	if activate {
-		p.Exec.SysProcAttr.CreationFlags = 0
+func (p *Process) ShowWindow(flag bool) {
+	showWindow(&p.SysProcAttr, flag)
+}
+
+func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
+	if flag {
+		spa.CreationFlags = 0
 	} else {
-		p.Exec.SysProcAttr.CreationFlags = create_new_console | create_new_process_group
+		spa.CreationFlags = create_new_console | create_new_process_group
 	}
+}
+
+func (p *Process) InheritConsole(flag bool) {
+	inheritConsole(&p.SysProcAttr, flag)
 }

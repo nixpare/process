@@ -60,7 +60,3 @@ func FastCommandParse(args ...string) (wd string, execName string, argV []string
 	a := ParseCommandArgs(args...)
 	return "", a[0], a[1:]
 }
-
-func stripWhiteSpaces(s string) string {
-	return strings.TrimRight(s, "\n\t ")
-}
