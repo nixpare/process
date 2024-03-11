@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/nixpare/broadcaster"
 )
 
 func (p *Process) prepareStdout(stdout io.Writer) error {
@@ -14,7 +16,7 @@ func (p *Process) prepareStdout(stdout io.Writer) error {
 		return nil
 	}
 
-	go pipeOutput(p.outC, &p.captureOut, outPipe, stdout, "stdout")
+	go pipeOutput(p.outBc, &p.captureOut, outPipe, stdout, "stdout")
 	return nil
 }
 
@@ -24,12 +26,12 @@ func (p *Process) prepareStderr(stderr io.Writer) error {
 		return nil
 	}
 
-	go pipeOutput(p.errC, &p.captureErr, errPipe, stderr, "stderr")
+	go pipeOutput(p.errBc, &p.captureErr, errPipe, stderr, "stderr")
 	return nil
 }
 
-func pipeOutput(c chan []byte, capture *[][]byte, r io.ReadCloser, w io.Writer, pipeID string) {
-	defer close(c)
+func pipeOutput(bc *broadcaster.Broadcaster[[]byte], capture *[][]byte, r io.ReadCloser, w io.Writer, pipeID string) {
+	defer bc.Close()
 
 	pipeR, pipeW := io.Pipe()
 	var buf [1024]byte
@@ -61,7 +63,7 @@ func pipeOutput(c chan []byte, capture *[][]byte, r io.ReadCloser, w io.Writer, 
 				line = line[:len(line)-1]
 			}
 
-			c <- line
+			bc.Send(line)
 			*capture = append(*capture, line)
 
 			if err != nil {

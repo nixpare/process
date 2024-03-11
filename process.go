@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/nixpare/comms"
+	"github.com/nixpare/broadcaster"
 )
 
 // Process wraps the default *exec.Cmd structure and makes easier to
@@ -26,13 +26,13 @@ type Process struct {
 	Env            []string
 	SysProcAttr    syscall.SysProcAttr
 	Exec           *exec.Cmd
-	exitComm       *comms.Broadcaster[ExitStatus]
+	exitComm       *broadcaster.Broadcaster[ExitStatus]
 	running        bool
 	lastExitStatus ExitStatus
 	in             io.WriteCloser
-	outC           chan []byte
+	outBc          *broadcaster.Broadcaster[[]byte]
+	errBc          *broadcaster.Broadcaster[[]byte]
 	captureOut     [][]byte
-	errC           chan []byte
 	captureErr     [][]byte
 }
 
@@ -73,7 +73,7 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 		args:        args,
 		wd:          wd,
 		SysProcAttr: initSysProcAttr(),
-		exitComm:    comms.NewBroadcaster[ExitStatus](),
+		exitComm:    broadcaster.NewBroadcaster[ExitStatus](),
 	}
 
 	return p, nil
@@ -101,10 +101,9 @@ func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 
 	p.initCommand()
 
-	p.outC = make(chan []byte, 10)
+	p.outBc = broadcaster.NewBroadcaster[[]byte]()
+	p.errBc = broadcaster.NewBroadcaster[[]byte]()
 	p.captureOut = nil
-
-	p.errC = make(chan []byte, 10)
 	p.captureErr = nil
 
 	err := p.preparePipes(stdin, stdout, stderr)
@@ -165,7 +164,9 @@ func (p *Process) afterStart() {
 // state known
 func (p *Process) Wait() ExitStatus {
 	if p.IsRunning() {
-		return p.exitComm.Get()
+		l := p.exitComm.Register(0)
+		defer l.Unregister()
+		return l.Get()
 	}
 	return p.lastExitStatus
 }
@@ -220,15 +221,42 @@ func (p *Process) CloseInput() error {
 	return p.in.Close()
 }
 
+func joinLines(lines [][]byte) []byte {
+	var length int
+	for _, line := range lines {
+		length += len(line) + 1
+	}
+
+	out := make([]byte, 0, length)
+	for _, line := range lines {
+		out = append(out, line...)
+		out = append(out, '\n')
+	}
+
+	return out
+}
+
 // Stdout returns all the standard output captured at
 // the moment until the Process is started again
-func (p *Process) Stdout() [][]byte {
+func (p *Process) Stdout() []byte {
+	return joinLines(p.StdoutLines())
+}
+
+// Stdout returns all the standard output captured at
+// the moment until the Process is started again
+func (p *Process) StdoutLines() [][]byte {
 	return p.captureOut
 }
 
 // Stderr returns all the standard error captured at
 // the moment until the Process is started again
-func (p *Process) Stderr() [][]byte {
+func (p *Process) Stderr() []byte {
+	return joinLines(p.StderrLines())
+}
+
+// Stderr returns all the standard error captured at
+// the moment until the Process is started again
+func (p *Process) StderrLines() [][]byte {
 	return p.captureErr
 }
 
@@ -236,16 +264,16 @@ func (p *Process) Stderr() [][]byte {
 // output of the program in which are sent lines. This
 // channel is automatically closed when the program stops,
 // so it's safe to range over it and must not be closed manually
-func (p *Process) StdoutChan() <- chan []byte {
-	return p.outC
+func (p *Process) StdoutListener(bufSize int) *broadcaster.Listener[[]byte] {
+	return p.outBc.Register(bufSize)
 }
 
 // StderrChan returns a channel connected to the standard
 // error of the program in which are sent lines. This
 // channel is automatically closed when the program stops,
 // so it's safe to range over it and must not be closed manually
-func (p *Process) StderrChan() <- chan []byte {
-	return p.errC
+func (p *Process) StderrListener(bufSize int) *broadcaster.Listener[[]byte] {
+	return p.errBc.Register(bufSize)
 }
 
 // IsRunning reports whether the Process is running
