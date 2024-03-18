@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/nixpare/broadcaster"
@@ -30,10 +31,9 @@ type Process struct {
 	running        bool
 	lastExitStatus ExitStatus
 	in             io.WriteCloser
-	outBc          *broadcaster.Broadcaster[[]byte]
-	errBc          *broadcaster.Broadcaster[[]byte]
-	captureOut     [][]byte
-	captureErr     [][]byte
+	stdOutErrWG    sync.WaitGroup
+	outBc          *broadcaster.BufBroadcaster[[]byte]
+	errBc          *broadcaster.BufBroadcaster[[]byte]
 }
 
 // NewProcess creates a new Process with the given arguments.
@@ -101,10 +101,8 @@ func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 
 	p.initCommand()
 
-	p.outBc = broadcaster.NewBroadcaster[[]byte]()
-	p.errBc = broadcaster.NewBroadcaster[[]byte]()
-	p.captureOut = nil
-	p.captureErr = nil
+	p.outBc = broadcaster.NewBufBroadcaster[[]byte]()
+	p.errBc = broadcaster.NewBufBroadcaster[[]byte]()
 
 	err := p.preparePipes(stdin, stdout, stderr)
 	if err != nil {
@@ -148,6 +146,7 @@ func (p *Process) preparePipes(stdin io.Reader, stdout, stderr io.Writer) error 
 // afterStart waits for the Process with the already provided function by *os.Process,
 // then sends the ExitStatus via the broadcaster
 func (p *Process) afterStart() {
+	p.stdOutErrWG.Wait()
 	err := p.Exec.Wait()
 
 	p.lastExitStatus = ExitStatus{
@@ -245,7 +244,7 @@ func (p *Process) Stdout() []byte {
 // Stdout returns all the standard output captured at
 // the moment until the Process is started again
 func (p *Process) StdoutLines() [][]byte {
-	return p.captureOut
+	return p.outBc.Data()
 }
 
 // Stderr returns all the standard error captured at
@@ -257,23 +256,25 @@ func (p *Process) Stderr() []byte {
 // Stderr returns all the standard error captured at
 // the moment until the Process is started again
 func (p *Process) StderrLines() [][]byte {
-	return p.captureErr
+	return p.errBc.Data()
 }
 
-// StdoutChan returns a channel connected to the standard
-// output of the program in which are sent lines. This
-// channel is automatically closed when the program stops,
-// so it's safe to range over it and must not be closed manually
-func (p *Process) StdoutListener(bufSize int) *broadcaster.Listener[[]byte] {
-	return p.outBc.Register(bufSize)
+func (p *Process) StdoutListener(bufSize int) <-chan []byte {
+	return p.outBc.Register(bufSize).Ch()
 }
 
-// StderrChan returns a channel connected to the standard
-// error of the program in which are sent lines. This
-// channel is automatically closed when the program stops,
-// so it's safe to range over it and must not be closed manually
-func (p *Process) StderrListener(bufSize int) *broadcaster.Listener[[]byte] {
-	return p.errBc.Register(bufSize)
+func (p *Process) StderrBroadcast(bufSize int) <-chan []byte {
+	return p.errBc.Register(bufSize).Ch()
+}
+
+func (p *Process) ConnectStdout(bufSize int) ([][]byte, <-chan []byte) {
+	old, ch := p.outBc.Connect(bufSize)
+	return old, ch.Ch()
+}
+
+func (p *Process) ConnectStderr(bufSize int) ([][]byte, <-chan []byte) {
+	old, ch := p.errBc.Connect(bufSize)
+	return old, ch.Ch()
 }
 
 // IsRunning reports whether the Process is running

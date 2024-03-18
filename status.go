@@ -19,7 +19,7 @@ func (exitStatus ExitStatus) Error() error {
 		return nil
 	}
 
-	return fmt.Errorf("exit status (code %d): %v", exitStatus.ExitCode, exitStatus.ExitError)
+	return fmt.Errorf("exit status (code 0x%x): %v", exitStatus.ExitCode, exitStatus.ExitError)
 }
 
 func (exitStatus ExitStatus) Unwrap() error {

@@ -11,28 +11,42 @@ import (
 )
 
 func (p *Process) prepareStdout(stdout io.Writer) error {
+	p.stdOutErrWG.Add(1)
 	outPipe, err := p.Exec.StdoutPipe()
 	if err != nil {
 		return nil
 	}
 
-	go pipeOutput(p.outBc, &p.captureOut, outPipe, stdout, "stdout")
+	go func() {
+		defer func() {
+			p.outBc.Close()
+			p.outBc = nil
+			p.stdOutErrWG.Done()
+		}()
+		pipeOutput(p.outBc, outPipe, stdout, "stdout")
+	}()
 	return nil
 }
 
 func (p *Process) prepareStderr(stderr io.Writer) error {
+	p.stdOutErrWG.Add(1)
 	errPipe, err := p.Exec.StderrPipe()
 	if err != nil {
 		return nil
 	}
 
-	go pipeOutput(p.errBc, &p.captureErr, errPipe, stderr, "stderr")
+	go func() {
+		defer func() {
+			p.errBc.Close()
+			p.errBc = nil
+			p.stdOutErrWG.Done()
+		}()
+		pipeOutput(p.errBc, errPipe, stderr, "stderr")
+	}()
 	return nil
 }
 
-func pipeOutput(bc *broadcaster.Broadcaster[[]byte], capture *[][]byte, r io.ReadCloser, w io.Writer, pipeID string) {
-	defer bc.Close()
-
+func pipeOutput(bc *broadcaster.BufBroadcaster[[]byte], r io.ReadCloser, w io.Writer, pipeID string) {
 	pipeR, pipeW := io.Pipe()
 	var buf [1024]byte
 
@@ -51,20 +65,13 @@ func pipeOutput(bc *broadcaster.Broadcaster[[]byte], capture *[][]byte, r io.Rea
 				}
 			}
 
-			if len(line) == 0 {
-				if err != nil {
-					break
-				} else {
-					continue
+			if len(line) > 0 {
+				if line[len(line)-1] == '\n' {
+					line = line[:len(line)-1]
 				}
-			}
 
-			if len(line) > 0 && line[len(line)-1] == '\n' {
-				line = line[:len(line)-1]
+				bc.Send(line)
 			}
-
-			bc.Send(line)
-			*capture = append(*capture, line)
 
 			if err != nil {
 				break
@@ -81,9 +88,11 @@ func pipeOutput(bc *broadcaster.Broadcaster[[]byte], capture *[][]byte, r io.Rea
 			}
 		}
 
-		pipeW.Write(b)
-		if w != nil && w != dev_null {
-			w.Write(b)
+		if len(b) > 0 {
+			pipeW.Write(b)
+			if w != nil && w != dev_null {
+				w.Write(b)
+			}
 		}
 
 		if err != nil {
