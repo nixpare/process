@@ -263,7 +263,7 @@ func (p *Process) StdoutListener(bufSize int) <-chan []byte {
 	return p.outBc.Register(bufSize).Ch()
 }
 
-func (p *Process) StderrBroadcast(bufSize int) <-chan []byte {
+func (p *Process) StderrListener(bufSize int) <-chan []byte {
 	return p.errBc.Register(bufSize).Ch()
 }
 
