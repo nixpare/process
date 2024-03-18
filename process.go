@@ -74,6 +74,8 @@ func NewProcess(wd string, execPath string, args ...string) (*Process, error) {
 		wd:          wd,
 		SysProcAttr: initSysProcAttr(),
 		exitComm:    broadcaster.NewBroadcaster[ExitStatus](),
+		outBc:       broadcaster.NewBufBroadcaster[[]byte](),
+		errBc:       broadcaster.NewBufBroadcaster[[]byte](),
 	}
 
 	return p, nil
@@ -100,9 +102,6 @@ func (p *Process) Start(stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	p.initCommand()
-
-	p.outBc = broadcaster.NewBufBroadcaster[[]byte]()
-	p.errBc = broadcaster.NewBufBroadcaster[[]byte]()
 
 	err := p.preparePipes(stdin, stdout, stderr)
 	if err != nil {
@@ -280,6 +279,20 @@ func (p *Process) ConnectStderr(bufSize int) ([][]byte, <-chan []byte) {
 // IsRunning reports whether the Process is running
 func (p *Process) IsRunning() bool {
 	return p.running
+}
+
+func (p *Process) Clone() *Process {
+	return &Process{
+		ExecName:    p.ExecName,
+		execPath:    p.execPath,
+		args:        p.args,
+		wd:          p.wd,
+		Env:         append([]string{}, p.Env...),
+		SysProcAttr: p.SysProcAttr,
+		exitComm:    broadcaster.NewBroadcaster[ExitStatus](),
+		outBc:       broadcaster.NewBufBroadcaster[[]byte](),
+		errBc:       broadcaster.NewBufBroadcaster[[]byte](),
+	}
 }
 
 func (p *Process) String() string {
