@@ -2,6 +2,8 @@ github.com/nixpare/broadcaster v1.1.0 h1:tWEqDw94ZwkBEKVUlsMfE9mxu1s9StYl8cod3a8
 github.com/nixpare/broadcaster v1.1.0/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
 github.com/nixpare/broadcaster v1.1.1 h1:zNz8d+6kaiuVJwqKIM9A/G1G0DjBXkehOhGtEZHLVno=
 github.com/nixpare/broadcaster v1.1.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
+github.com/nixpare/broadcaster v1.2.1 h1:eit04tSQgKCBvF0lFOQKaMUdVGgIvgwkQdIhvilf+vg=
+github.com/nixpare/broadcaster v1.2.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
 github.com/nixpare/comms v1.1.0 h1:FM125OBc4UG/p5Hx36G25ZBVG22gBioLc4imWByxxtM=
 github.com/nixpare/comms v1.1.0/go.mod h1:ZtGVUJ7o60At8pXHFxvpNZyDfD0DbShEV+AWnycwJek=
 github.com/nixpare/logger/v2 v2.2.2 h1:5jc8qBaqYQ8PXEYbyPKiXHToJEhR05fVU1DiMO8yN6E=
