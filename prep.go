@@ -14,7 +14,7 @@ func (p *Process) prepareStdout(stdout io.Writer) error {
 	p.stdOutErrWG.Add(1)
 	outPipe, err := p.Exec.StdoutPipe()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	go func() {
@@ -31,7 +31,7 @@ func (p *Process) prepareStderr(stderr io.Writer) error {
 	p.stdOutErrWG.Add(1)
 	errPipe, err := p.Exec.StderrPipe()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	go func() {

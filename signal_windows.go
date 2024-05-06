@@ -2,51 +2,60 @@ package process
 
 import (
 	"fmt"
+	"log"
 	"os"
-	"os/exec"
 	"syscall"
 )
 
-const ctrl_c_command = "--nix-send-ctrl"
+const ctrl_c_command = "--github.com/nixpare/process.stop"
 
 func init() {
 	if len(os.Args) < 3 || os.Args[1] != ctrl_c_command {
 		return
 	}
 
+	os.Exit(initStop())
+}
+
+func initStop() (exitCode int) {
+	log.SetFlags(0)
+
 	PID := -1
 	_, err := fmt.Sscanf(os.Args[2], "%d", &PID)
 	if err != nil || PID <= 0 {
-		fmt.Print(err)
-		os.Exit(1)
+		log.Println(err)
+		return 1
 	}
 
 	if PID <= 0 {
-		fmt.Printf("invalid PID: %d", PID)
-		os.Exit(1)
+		log.Printf("invalid PID: %d\n", PID)
+		return 1
 	}
 
 	err = stopProcessThread(PID)
 	if err != nil {
-		fmt.Print(err)
-		os.Exit(1)
+		log.Println(err)
+		return 1
 	}
 
-	os.Exit(0)
+	return
 }
 
 // StopProcess simulates a CTRL+C signal to the Process
 func StopProcess(PID int) error {
-	child := exec.Command(os.Args[0], ctrl_c_command, fmt.Sprint(PID))
-	
-	b, err := child.CombinedOutput()
+	child, err := NewProcess("", os.Args[0], ctrl_c_command, fmt.Sprint(PID))
 	if err != nil {
-		return fmt.Errorf("CTRL-C thread error: %w", err)
-	}
-	if len(b) > 0 {
-		return fmt.Errorf("CTRL-C thread error: %s", string(b))
+		return err
 	}
 
+	exitStatus, err := child.Run(nil, nil, nil)
+	if err != nil {
+		return err
+	}
+	
+	if err = exitStatus.Error(); err != nil {
+		return fmt.Errorf("CTRL-C thread error: %w - %s", err, child.Stderr())
+	}
 	return nil
 }
 

@@ -281,6 +281,14 @@ func (p *Process) IsRunning() bool {
 	return p.running
 }
 
+func (p *Process) PID() int {
+	if p.Exec.Process == nil {
+		return -1
+	}
+
+	return p.Exec.Process.Pid
+}
+
 func (p *Process) Clone() *Process {
 	return &Process{
 		ExecName:    p.ExecName,
