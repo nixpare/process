@@ -98,7 +98,7 @@ func (p *Process) StartElevated(stdin io.Reader, stdout, stderr io.Writer) error
 	err = windows.ShellExecute(
 		0, windows.StringToUTF16Ptr("runas"),
 		windows.StringToUTF16Ptr(os.Args[0]), windows.StringToUTF16Ptr(fmt.Sprintf("%s %d", runElevateCommand, p.PID())),
-		windows.StringToUTF16Ptr(cwd), windows.SW_SHOW,
+		windows.StringToUTF16Ptr(cwd), windows.SW_HIDE,
 	)
 	if err != nil {
 		p.Kill()
@@ -132,11 +132,6 @@ func tokenSwitch() (exitCode int) {
 		return invalid_pid_error
 	}
 
-    defer func() {
-        fmt.Println(exitCode, err)
-		fmt.Scan()
-    }()
-
 	var tok windows.Token
 	err = windows.OpenProcessToken(windows.CurrentProcess(), windows.MAXIMUM_ALLOWED, &tok)
 	if err != nil {
@@ -165,19 +160,12 @@ func tokenSwitch() (exitCode int) {
 	defer windows.CloseHandle(proc)
 
 	var info struct {
-		token  windows.Handle
-		thread windows.Handle
+		Token  windows.Handle
+		Thread windows.Handle
 	}
 
-	err = windows.NtQueryInformationProcess(proc, windows.ProcessAccessToken, unsafe.Pointer(&info), uint32(unsafe.Sizeof(info)), nil)
-	if err != nil {
-		return get_tok_info_error
-	}
-
-	fmt.Println(info.thread)
-
-	info.token = windows.Handle(newTok)
-	info.thread = windows.Handle(0)
+	info.Token = windows.Handle(newTok)
+	info.Thread = windows.Handle(0)
 	err = windows.NtSetInformationProcess(proc, windows.ProcessAccessToken, unsafe.Pointer(&info), uint32(unsafe.Sizeof(info)))
 	if err != nil {
 		return set_tok_error
@@ -200,8 +188,6 @@ func tokenSwitch() (exitCode int) {
 	if err != nil {
 		return read_thread_info
 	}
-
-	fmt.Println(threadEntry.ThreadID)
 
 	thread, err := windows.OpenThread(windows.THREAD_SUSPEND_RESUME, false, threadEntry.ThreadID)
 	if err != nil {
