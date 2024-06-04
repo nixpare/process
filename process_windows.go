@@ -43,9 +43,11 @@ const (
 )
 
 func initSysProcAttr() *syscall.SysProcAttr {
-	var spa *syscall.SysProcAttr
+	spa := new(syscall.SysProcAttr)
+
 	inheritConsole(spa, false)
 	showWindow(spa, false)
+	
 	return spa
 }
 
