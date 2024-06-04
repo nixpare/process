@@ -6,8 +6,8 @@ import (
 	"syscall"
 )
 
-func initSysProcAttr() syscall.SysProcAttr {
-	return syscall.SysProcAttr{}
+func initSysProcAttr() *syscall.SysProcAttr {
+	return new(syscall.SysProcAttr)
 }
 
 // stop sends a CTRL+C signal
