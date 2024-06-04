@@ -6,5 +6,3 @@ require (
 	github.com/nixpare/broadcaster v1.2.1
 	golang.org/x/sys v0.21.0
 )
-
-retract v1.6.6
