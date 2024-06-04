@@ -23,6 +23,11 @@ func ListenForCTRLC() chan os.Signal {
 	return exitC
 }
 
+func StopListenForCTRLC(exitC chan os.Signal) {
+	signal.Stop(exitC)
+	close(exitC)
+}
+
 // ParseCommandArgs gets a list of strings and parses their content
 // splitting them into separated strings. The characters used to parse
 // the commands are, in the relevant order, <'>, <"> and < >

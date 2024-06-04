@@ -25,7 +25,7 @@ type Process struct {
 	args           []string
 	wd             string
 	Env            []string
-	SysProcAttr    syscall.SysProcAttr
+	SysProcAttr    *syscall.SysProcAttr
 	Exec           *exec.Cmd
 	exitComm       *broadcaster.Broadcaster[ExitStatus]
 	running        bool
@@ -124,8 +124,7 @@ func (p *Process) initCommand() {
 	p.Exec.Dir = p.wd
 	p.Exec.Env = p.Env
 	
-	p.Exec.SysProcAttr = new(syscall.SysProcAttr)
-	*p.Exec.SysProcAttr = p.SysProcAttr
+	p.Exec.SysProcAttr = p.SysProcAttr
 }
 
 func (p *Process) preparePipes(stdin io.Reader, stdout, stderr io.Writer) error {

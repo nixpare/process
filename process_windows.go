@@ -42,10 +42,10 @@ const (
 	create_new_process_group uint32 = 0x00000200
 )
 
-func initSysProcAttr() syscall.SysProcAttr {
-	var spa syscall.SysProcAttr
-	inheritConsole(&spa, false)
-	showWindow(&spa, false)
+func initSysProcAttr() *syscall.SysProcAttr {
+	var spa *syscall.SysProcAttr
+	inheritConsole(spa, false)
+	showWindow(spa, false)
 	return spa
 }
 
@@ -63,7 +63,7 @@ func showWindow(spa *syscall.SysProcAttr, flag bool) {
 }
 
 func (p *Process) ShowWindow(flag bool) {
-	showWindow(&p.SysProcAttr, flag)
+	showWindow(p.SysProcAttr, flag)
 }
 
 func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
@@ -75,7 +75,7 @@ func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
 }
 
 func (p *Process) InheritConsole(flag bool) {
-	inheritConsole(&p.SysProcAttr, flag)
+	inheritConsole(p.SysProcAttr, flag)
 }
 
 func AmAdmin() bool {
