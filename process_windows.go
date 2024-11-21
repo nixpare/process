@@ -76,10 +76,6 @@ func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
 	}
 }
 
-func (p *Process) InheritConsole(flag bool) {
-	inheritConsole(p.SysProcAttr, flag)
-}
-
 func AmAdmin() bool {
 	return windows.GetCurrentProcessToken().IsElevated()
 }

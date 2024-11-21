@@ -288,6 +288,10 @@ func (p *Process) PID() int {
 	return p.Exec.Process.Pid
 }
 
+func (p *Process) InheritConsole(flag bool) {
+	inheritConsole(p.SysProcAttr, flag)
+}
+
 func (p *Process) Clone() *Process {
 	return &Process{
 		ExecName:    p.ExecName,

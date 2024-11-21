@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build unix
 package process
 
 import (
@@ -8,6 +8,10 @@ import (
 
 func initSysProcAttr() *syscall.SysProcAttr {
 	return new(syscall.SysProcAttr)
+}
+
+func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
+	spa.Setpgid = !flag
 }
 
 // stop sends a CTRL+C signal
