@@ -19,7 +19,7 @@ func (p *Process) prepareStdout(stdout io.Writer) error {
 
 	go func() {
 		defer func() {
-			p.outBc.Close()
+			p.outBc.Reset()
 			p.stdOutErrWG.Done()
 		}()
 		pipeOutput(p.outBc, outPipe, stdout, "stdout")
@@ -36,7 +36,7 @@ func (p *Process) prepareStderr(stderr io.Writer) error {
 
 	go func() {
 		defer func() {
-			p.errBc.Close()
+			p.errBc.Reset()
 			p.stdOutErrWG.Done()
 		}()
 		pipeOutput(p.errBc, errPipe, stderr, "stderr")
