@@ -54,7 +54,7 @@ func initSysProcAttr() *syscall.SysProcAttr {
 // stop generates a CTRL+C signal
 func (p *Process) stop() error {
 	if !p.running {
-		return fmt.Errorf("process %s not started", p.ExecName)
+		return nil
 	}
 
 	return StopProcess(p.Exec.Process.Pid)

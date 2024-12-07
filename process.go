@@ -316,8 +316,15 @@ func (p *Process) String() string {
 	return fmt.Sprintf("%s (%s)", p.ExecName, state)
 }
 
-func (p *Process) Close() {
+func (p *Process) Close() error {
+	err := p.Stop()
+	if err != nil {
+		return err
+	}
+
 	p.exitComm.Close()
 	p.outBc.Close()
 	p.errBc.Close()
+	
+	return nil
 }

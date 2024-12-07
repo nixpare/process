@@ -16,5 +16,9 @@ func inheritConsole(spa *syscall.SysProcAttr, flag bool) {
 
 // stop sends a CTRL+C signal
 func (p *Process) stop() error {
+	if !p.running {
+		return nil
+	}
+	
 	return p.Exec.Process.Signal(os.Interrupt)
 }
