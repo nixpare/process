@@ -280,6 +280,20 @@ func (p *Process) IsRunning() bool {
 	return p.running
 }
 
+func (p *Process) ExecPath() string {
+	return p.execPath
+}
+
+func (p *Process) Args() []string {
+	args := make([]string, 0, len(p.args))
+	args = append(args, p.args...)
+	return args
+}
+
+func (p *Process) WorkDir() string {
+	return p.wd
+}
+
 func (p *Process) PID() int {
 	if p.Exec.Process == nil {
 		return -1
