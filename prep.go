@@ -11,36 +11,36 @@ import (
 )
 
 func (p *Process) prepareStdout(stdout io.Writer) error {
-	p.stdOutErrWG.Add(1)
 	outPipe, err := p.Exec.StdoutPipe()
 	if err != nil {
 		return err
 	}
 
+	p.outBc.Reset()
+
+	p.stdOutErrWG.Add(1)
 	go func() {
-		defer func() {
-			p.outBc.Reset()
-			p.stdOutErrWG.Done()
-		}()
+		defer p.stdOutErrWG.Done()
 		pipeOutput(p.outBc, outPipe, stdout, "stdout")
 	}()
+	
 	return nil
 }
 
 func (p *Process) prepareStderr(stderr io.Writer) error {
-	p.stdOutErrWG.Add(1)
 	errPipe, err := p.Exec.StderrPipe()
 	if err != nil {
 		return err
 	}
 
+	p.errBc.Reset()
+
+	p.stdOutErrWG.Add(1)
 	go func() {
-		defer func() {
-			p.errBc.Reset()
-			p.stdOutErrWG.Done()
-		}()
+		defer p.stdOutErrWG.Done()
 		pipeOutput(p.errBc, errPipe, stderr, "stderr")
 	}()
+
 	return nil
 }
 
