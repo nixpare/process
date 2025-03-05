@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 
 	"github.com/nixpare/process"
 )
@@ -28,7 +29,9 @@ func main() {
 	}
 
 	cmd := exec.Command(os.Args[1], os.Args[2:]...)
-	cmd.SysProcAttr.Token = token
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Token: token,
+	}
 
 	err = cmd.Run()
 	if err != nil {
