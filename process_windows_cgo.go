@@ -1,5 +1,4 @@
 //go:build windows && cgo
-
 package process
 
 /*
